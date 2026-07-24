@@ -1,0 +1,7 @@
+anthropic 
+python-dotenv
+anthropic[bedrock]
+boto3==1.37.3
+jupyter
+notebook
+dotenv
