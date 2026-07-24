@@ -2,6 +2,7 @@ import json
 import os
 from anthropic import AnthropicBedrock
 import time
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -38,8 +39,27 @@ tools = [
                 },
             },
             "required": ["title", "start", "end"], 
-        }
-    }
+        },
+    },
+    {
+        "name": "list_calendar_events",
+        "description": "List all calendar events on a given date.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "format": "date"},
+            },
+            "required": ["date"],
+        },
+    },
+    {
+        "name": "get_current_date",
+        "description": "Get the current date in YYYY-MM-DD format.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
@@ -62,33 +82,41 @@ def chat(messages):
         model = model,
         max_tokens = 1000,
         tools=tools,
-        tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+        tool_choice={"type": "auto"},
         messages = messages
     )
 
 def run_tool(name, tool_input):
     if name == "create_calendar_event":
         return {"event_id": "evt_" + str(int(time.time())), "status": "created", "title": tool_input["title"]}
+    if name == "list_calendar_events":
+        return {"events": [{"title": "Existing meeting", "start": "14:00", "end": "15:00"}]}
+    if name == "get_current_date":
+        return {"todays_date": str(date.today())}
     return {"error": f"Unknown tool: {name}"}
 
 messages = []
 
-add_user_message(messages, "Schedule a weekly team standup every Monday at 9am for the next 4 weeks. Invite the whole team: alice@example.com, bob@example.com, carol@example.com.")
+add_user_message(messages, "Check what I have next Monday, then schedule a planning session that avoids any conflicts.")
 
 response = chat(messages)
- 
 
 while response.stop_reason == "tool_use":
-    tool_use = next(block for block in response.content if block.type == "tool_use")
-    result = run_tool(tool_use.name, tool_use.input)
+    tool_results = []
+    for block in response.content:
+        if block.type == "tool_use":
+            result = run_tool(block.name, block.input)
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result),
+                }
+            )
 
     add_assistant_message(messages, response.content)
 
-    add_user_message(messages, [{
-                    "type": "tool_result",
-                    "tool_use_id": tool_use.id,
-                    "content": json.dumps(result),
-    }])
+    add_user_message(messages, tool_results)
 
     response = chat(messages)
 
